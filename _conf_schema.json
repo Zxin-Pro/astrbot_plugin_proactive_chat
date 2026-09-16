@@ -1,0 +1,102 @@
+{
+  "enable": {
+    "description": "全局总开关：关闭后插件完全不主动发起聊天",
+    "type": "bool",
+    "default": true
+  },
+  "check_interval_seconds": {
+    "description": "后台调度器检查间隔（秒），最小 30",
+    "type": "int",
+    "default": 300
+  },
+  "silence_threshold_minutes": {
+    "description": "沉默阈值（分钟）：距用户最后一条消息超过该时长才可能主动",
+    "type": "int",
+    "default": 60
+  },
+  "proactive_probability": {
+    "description": "基础触发概率 0~1，实际概率 = 基础概率 × (0.5 + 欲望值)",
+    "type": "float",
+    "default": 0.3
+  },
+  "max_daily_proactive": {
+    "description": "每个会话每天最多主动发送的次数",
+    "type": "int",
+    "default": 3
+  },
+  "cooldown_minutes": {
+    "description": "全局冷却（分钟）：两次主动聊天（跨所有会话）之间的最小间隔",
+    "type": "int",
+    "default": 120
+  },
+  "session_cooldown_minutes": {
+    "description": "单会话冷却（分钟）：同一会话两次主动聊天的最小间隔，也用于自说自话防护的额外等待",
+    "type": "int",
+    "default": 240
+  },
+  "quiet_hours_start": {
+    "description": "免打扰开始小时（0-23），如 23 表示 23:00",
+    "type": "int",
+    "default": 23
+  },
+  "quiet_hours_end": {
+    "description": "免打扰结束小时（0-23），如 8 表示 08:00；与开始值相同视为不启用",
+    "type": "int",
+    "default": 8
+  },
+  "quiet_active_window_minutes": {
+    "description": "免打扰时段例外：用户最近 N 分钟内发过消息视为正在活跃，可豁免免打扰",
+    "type": "int",
+    "default": 10
+  },
+  "enable_desire_system": {
+    "description": "是否启用欲望驱动系统（0~1 内部欲望值，随时间上升、回复后下降）",
+    "type": "bool",
+    "default": true
+  },
+  "desire_increase_rate": {
+    "description": "欲望值每小时上升量（如 0.08 表示每小时 +0.08）",
+    "type": "float",
+    "default": 0.08
+  },
+  "desire_decay_rate": {
+    "description": "用户每回复一次欲望值下降量（主动聊天后下降 2 倍）",
+    "type": "float",
+    "default": 0.25
+  },
+  "llm_provider_id": {
+    "description": "用于主动聊天的 LLM 提供商 ID；留空则使用该会话当前默认提供商",
+    "type": "string",
+    "default": ""
+  },
+  "target_sessions": {
+    "description": "白名单：unified_msg_origin 列表（如 aiocqhttp:GroupMessage:12345）；留空表示对所有已知会话生效",
+    "type": "list",
+    "default": []
+  },
+  "blacklist_sessions": {
+    "description": "黑名单：unified_msg_origin 列表（支持平台前缀，如 aiocqhttp:），命中则永不主动",
+    "type": "list",
+    "default": []
+  },
+  "prompt_override": {
+    "description": "自定义提示词：追加到内置人格提示词之后，用于定制 Bot 主动聊天风格",
+    "type": "text",
+    "default": ""
+  },
+  "admin_only_commands": {
+    "description": "开启后仅管理员可使用 /主动聊天 管理命令",
+    "type": "bool",
+    "default": true
+  },
+  "user_profile": {
+    "description": "用户画像文本（全局共用），将注入 LLM 上下文帮助其选择合适话题",
+    "type": "text",
+    "default": ""
+  },
+  "negative_keywords": {
+    "description": "负面情绪 / 拒绝打扰关键词，用户消息命中后 1 小时内不主动",
+    "type": "list",
+    "default": ["别烦我", "别理我", "闭嘴", "滚", "烦死了", "别说话", "走开"]
+  }
+}
