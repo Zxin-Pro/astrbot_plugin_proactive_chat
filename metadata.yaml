@@ -2,6 +2,6 @@ name: astrbot_plugin_proactive_chat
 display_name: 主动聊天
 desc: 让 AI 主动发起聊天：沉默检测、上下文感知、LLM 决策与生成、欲望驱动、冷却与免打扰、多会话隔离
 short_desc: AI 主动找你聊天
-version: v1.0.0
+version: v1.1.0
 author: Zxin-Pro
 repo: https://github.com/Zxin-Pro/astrbot_plugin_proactive_chat

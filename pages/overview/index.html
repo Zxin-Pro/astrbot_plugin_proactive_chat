@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>主动聊天</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="topbar-left">
+          <h1>💬 主动聊天</h1>
+          <span class="subtitle">沉默检测 · 欲望驱动 · 冷却与免打扰</span>
+        </div>
+        <div class="topbar-right">
+          <label class="auto-refresh">
+            <input type="checkbox" id="autoRefresh" checked />
+            自动刷新
+          </label>
+          <button class="btn btn-ghost" id="btnRefresh">刷新</button>
+        </div>
+      </header>
+
+      <div id="toast" class="toast hidden"></div>
+
+      <main>
+        <!-- 全局状态 -->
+        <section class="grid stats">
+          <div class="card stat">
+            <div class="stat-label">全局开关</div>
+            <div class="stat-main">
+              <span id="globalEnableText" class="badge">—</span>
+              <button class="btn btn-sm" id="btnToggleGlobal">切换</button>
+            </div>
+          </div>
+          <div class="card stat">
+            <div class="stat-label">调度间隔</div>
+            <div class="stat-main"><span id="checkInterval" class="stat-value">—</span></div>
+          </div>
+          <div class="card stat">
+            <div class="stat-label">跟踪会话</div>
+            <div class="stat-main"><span id="trackedSessions" class="stat-value">—</span></div>
+          </div>
+          <div class="card stat">
+            <div class="stat-label">全局冷却</div>
+            <div class="stat-main"><span id="globalCooldown" class="stat-value">—</span></div>
+          </div>
+        </section>
+
+        <!-- 会话列表 -->
+        <section>
+          <h2 class="section-title">会话列表</h2>
+          <div id="sessionList" class="session-list">
+            <div class="card empty">暂无会话数据，等机器人收到消息后这里会出现会话</div>
+          </div>
+        </section>
+
+        <!-- 全局设置 -->
+        <section>
+          <h2 class="section-title">全局设置</h2>
+          <div class="card settings">
+            <div class="form-grid">
+              <label>沉默阈值（分钟）<input type="number" id="s_silence_threshold_minutes" min="1" /></label>
+              <label>基础概率（0~1）<input type="number" id="s_proactive_probability" min="0" max="1" step="0.05" /></label>
+              <label>每日上限（次）<input type="number" id="s_max_daily_proactive" min="0" /></label>
+              <label>全局冷却（分钟）<input type="number" id="s_cooldown_minutes" min="0" /></label>
+              <label>会话冷却（分钟）<input type="number" id="s_session_cooldown_minutes" min="0" /></label>
+              <label>调度间隔（秒）<input type="number" id="s_check_interval_seconds" min="30" /></label>
+              <label>免打扰开始（时）<input type="number" id="s_quiet_hours_start" min="0" max="23" /></label>
+              <label>免打扰结束（时）<input type="number" id="s_quiet_hours_end" min="0" max="23" /></label>
+              <label>欲望值每小时上涨<input type="number" id="s_desire_increase_rate" min="0" max="1" step="0.01" /></label>
+              <label>欲望值每次回复下降<input type="number" id="s_desire_decay_rate" min="0" max="1" step="0.01" /></label>
+              <label class="checkbox">
+                <input type="checkbox" id="s_enable" /> 全局总开关
+              </label>
+              <label class="checkbox">
+                <input type="checkbox" id="s_enable_desire_system" /> 欲望驱动系统
+              </label>
+            </div>
+            <div class="form-actions">
+              <button class="btn btn-primary" id="btnSaveSettings">保存设置</button>
+              <span class="hint">保存后立即生效并写入插件配置文件</span>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="confirmDialog" class="confirm">
+      <p id="confirmText">确认执行？</p>
+      <div class="confirm-actions">
+        <button class="btn" id="confirmCancel">取消</button>
+        <button class="btn btn-danger" id="confirmOk">确定</button>
+      </div>
+    </dialog>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

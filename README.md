@@ -68,6 +68,17 @@
 
 默认仅管理员可用；将 `admin_only_commands` 设为 false 后所有人可用。
 
+## WebUI 可视化页面（v1.1.0 新增）
+
+插件自带 WebUI 页面（AstrBot Plugin Pages）：安装后打开 **WebUI → 插件 → 主动聊天 → 打开页面**，即可看到可视化总览：
+
+- **全局状态卡**：全局开关一键切换、调度间隔、跟踪会话数、全局冷却倒计时
+- **会话列表**：每个会话一张卡片，实时显示沉默时长进度条、欲望值进度条、今日次数/上限、基础概率、免打扰时段、上次主动内容，支持单会话 测试/开启/关闭/重置
+- **全局设置表单**：沉默阈值、概率、每日上限、全局/会话冷却、免打扰时段、欲望参数等，保存即生效并写入配置文件
+- 每 5 秒自动轮询刷新，深色/浅色主题自动跟随 WebUI
+
+无需任何构建步骤，页面文件位于 `pages/overview/`，由 AstrBot Dashboard 自动发现并加载（要求 AstrBot 支持 Plugin Pages 的版本）。
+
 ## 触发条件（全满足才可能主动）
 
 1. 全局开关开启，且本会话未关闭、不在黑名单（白名单非空时需在白名单内）
@@ -84,8 +95,12 @@
 
 ```
 astrbot_plugin_proactive_chat/
-├── main.py                  # Star 入口：监听、调度循环、命令
+├── main.py                  # Star 入口：监听、调度循环、命令、WebUI API
 ├── adapter.py               # AstrBot API 适配层（所有框架调用集中于此）
+├── pages/overview/          # WebUI 可视化总览页（Plugin Pages）
+│   ├── index.html
+│   ├── app.js
+│   └── style.css
 ├── core/
 │   ├── scheduler.py         # 门控纯函数（沉默/冷却/免打扰/概率）
 │   ├── silence_detector.py  # 会话状态与沉默检测

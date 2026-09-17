@@ -30,6 +30,7 @@ from astrbot.api.event.filter import (
     event_message_type,
 )
 from astrbot.api.star import Context, Star
+from astrbot.api.web import error_response, json_response, request
 
 from .adapter import BotAdapter
 from .core import (
@@ -50,7 +51,10 @@ _KV_SESSIONS = "proactive_chat_sessions"
 _KV_GLOBAL_LAST = "proactive_chat_global_last_ts"
 
 # 版本信息
-_VERSION = "v1.0.0"
+_VERSION = "v1.1.0"
+
+# WebUI 后端 API 使用的插件名前缀
+PLUGIN_NAME = "astrbot_plugin_proactive_chat"
 
 # "设置"子命令支持的项目 → 覆盖字段映射
 _SET_KEY_MAP = {"间隔", "概率", "免打扰", "每日上限"}
@@ -128,6 +132,7 @@ class ProactiveChatPlugin(Star):
         self._scheduler_task = asyncio.create_task(
             self._scheduler_loop(), name="proactive-chat-scheduler"
         )
+        self._register_web_apis()
         logger.info(
             "[proactive_chat] 插件已启动，跟踪 %d 个会话，调度间隔 %ds",
             len(self.store.known_umos()),
@@ -537,6 +542,237 @@ class ProactiveChatPlugin(Star):
         self._dirty = True
         await self._flush(force=True)
         return "本会话主动聊天状态与覆盖配置已重置"
+
+    # =================================================================
+    # WebUI 插件页面后端 API
+    # 路由约定：必须带插件名前缀（官方 plugin-pages 文档）。
+    # 页面内通过 bridge.apiGet("overview") 访问，Dashboard 自动拼接前缀。
+    # =================================================================
+    def _register_web_apis(self) -> None:
+        register = getattr(self.context, "register_web_api", None)
+        if not callable(register):
+            logger.warning(
+                "[proactive_chat] 当前 AstrBot 版本不支持 register_web_api，WebUI 页面不可用"
+            )
+            return
+        try:
+            register(
+                f"/{PLUGIN_NAME}/overview",
+                self.api_overview,
+                ["GET"],
+                "主动聊天总览数据",
+            )
+            register(
+                f"/{PLUGIN_NAME}/session",
+                self.api_session_action,
+                ["POST"],
+                "主动聊天会话操作（开关/测试/重置）",
+            )
+            register(
+                f"/{PLUGIN_NAME}/settings/save",
+                self.api_save_settings,
+                ["POST"],
+                "保存主动聊天全局设置",
+            )
+        except Exception:
+            logger.exception("[proactive_chat] 注册 WebUI API 失败")
+
+    # ---------------- GET /overview：总览数据 ----------------
+    async def api_overview(self):
+        try:
+            now = time.time()
+            date_str = datetime.now().strftime("%Y-%m-%d")
+            sessions = []
+            for umo in sorted(self.store.known_umos()):
+                state = self.store.get(umo)
+                eff = self._effective_config(umo)
+                sessions.append(
+                    {
+                        "umo": umo,
+                        "enabled": state.enabled,
+                        "allowed": self._is_session_allowed(umo),
+                        "silence_minutes": (
+                            int((now - state.last_user_ts) // 60)
+                            if state.last_user_ts
+                            else None
+                        ),
+                        "silence_threshold": eff.silence_threshold_minutes,
+                        "desire": round(compute_desire(state, eff, now), 3),
+                        "probability": eff.proactive_probability,
+                        "today_count": state.today_count(date_str),
+                        "max_daily": eff.max_daily_proactive,
+                        "last_proactive_ts": state.last_proactive_ts,
+                        "last_proactive_text": state.last_proactive_text[:80],
+                        "negative_cooling": state.is_negative_cooling(now),
+                        "quiet_hours": [eff.quiet_hours_start, eff.quiet_hours_end],
+                    }
+                )
+            global_remain_min = (
+                max(0, int((now - self._global_last_ts) // 60))
+                if self._global_last_ts
+                else None
+            )
+            return json_response(
+                {
+                    "enable": bool(self.config.get("enable", True)),
+                    "desire_enabled": bool(
+                        self.config.get("enable_desire_system", True)
+                    ),
+                    "check_interval_seconds": int(
+                        self.config.get("check_interval_seconds", 300)
+                    ),
+                    "global_cooldown_minutes": int(
+                        self.config.get("cooldown_minutes", 120)
+                    ),
+                    "global_last_proactive_ts": self._global_last_ts,
+                    "global_cooldown_passed_min": global_remain_min,
+                    "tracked_sessions": len(sessions),
+                    "sessions": sessions,
+                    "settings": {
+                        "enable": bool(self.config.get("enable", True)),
+                        "enable_desire_system": bool(
+                            self.config.get("enable_desire_system", True)
+                        ),
+                        "check_interval_seconds": int(
+                            self.config.get("check_interval_seconds", 300)
+                        ),
+                        "silence_threshold_minutes": int(
+                            self.config.get("silence_threshold_minutes", 60)
+                        ),
+                        "proactive_probability": float(
+                            self.config.get("proactive_probability", 0.3)
+                        ),
+                        "max_daily_proactive": int(
+                            self.config.get("max_daily_proactive", 3)
+                        ),
+                        "cooldown_minutes": int(self.config.get("cooldown_minutes", 120)),
+                        "session_cooldown_minutes": int(
+                            self.config.get("session_cooldown_minutes", 240)
+                        ),
+                        "quiet_hours_start": int(
+                            self.config.get("quiet_hours_start", 23)
+                        ),
+                        "quiet_hours_end": int(self.config.get("quiet_hours_end", 8)),
+                        "desire_increase_rate": float(
+                            self.config.get("desire_increase_rate", 0.08)
+                        ),
+                        "desire_decay_rate": float(
+                            self.config.get("desire_decay_rate", 0.25)
+                        ),
+                    },
+                }
+            )
+        except Exception:
+            logger.exception("[proactive_chat] WebUI overview 接口异常")
+            return error_response("获取总览数据失败", status_code=500)
+
+    # ---------------- POST /session：会话操作 ----------------
+    async def api_session_action(self):
+        try:
+            payload = await request.json(default={})
+            umo = str(payload.get("umo") or "").strip()
+            action = str(payload.get("action") or "").strip()
+            if not umo:
+                return error_response("缺少 umo 参数", status_code=400)
+
+            if action in ("enable", "disable", "auto"):
+                state = self.store.get(umo)
+                state.enabled = (
+                    True if action == "enable" else False if action == "disable" else None
+                )
+                self._dirty = True
+                await self._flush(force=True)
+                return json_response({"ok": True, "action": action, "umo": umo})
+
+            if action == "reset":
+                self.store.remove(umo)
+                self._dirty = True
+                await self._flush(force=True)
+                return json_response({"ok": True, "action": "reset", "umo": umo})
+
+            if action == "test":
+                state = self.store.get(umo)
+                eff = self._effective_config(umo)
+                desire = compute_desire(state, eff, time.time())
+                sent = await self._try_proactive(umo, desire, forced=True)
+                return json_response(
+                    {"ok": True, "action": "test", "umo": umo, "sent": sent}
+                )
+
+            return error_response(f"未知操作: {action}", status_code=400)
+        except Exception:
+            logger.exception("[proactive_chat] WebUI session 接口异常")
+            return error_response("会话操作失败", status_code=500)
+
+    # ---------------- POST /settings/save：保存全局设置 ----------------
+    _ALLOWED_INT_SETTINGS = {
+        "check_interval_seconds": (30, 86400),
+        "silence_threshold_minutes": (1, 10080),
+        "max_daily_proactive": (0, 100),
+        "cooldown_minutes": (0, 10080),
+        "session_cooldown_minutes": (0, 20160),
+        "quiet_hours_start": (0, 23),
+        "quiet_hours_end": (0, 23),
+        "quiet_active_window_minutes": (0, 120),
+    }
+    _ALLOWED_FLOAT_SETTINGS = {
+        "proactive_probability": (0.0, 1.0),
+        "desire_increase_rate": (0.0, 1.0),
+        "desire_decay_rate": (0.0, 1.0),
+    }
+    _ALLOWED_BOOL_SETTINGS = {
+        "enable",
+        "enable_desire_system",
+        "admin_only_commands",
+    }
+
+    async def api_save_settings(self):
+        try:
+            payload = await request.json(default={})
+            if not isinstance(payload, dict):
+                return error_response("请求体必须是 JSON 对象", status_code=400)
+
+            applied: dict[str, Any] = {}
+            for key, value in payload.items():
+                if key in self._ALLOWED_INT_SETTINGS:
+                    lo, hi = self._ALLOWED_INT_SETTINGS[key]
+                    try:
+                        v = int(value)
+                    except (TypeError, ValueError):
+                        return error_response(f"{key} 必须是整数", status_code=400)
+                    if not lo <= v <= hi:
+                        return error_response(
+                            f"{key} 取值范围 {lo}~{hi}", status_code=400
+                        )
+                    self.config[key] = v
+                    applied[key] = v
+                elif key in self._ALLOWED_FLOAT_SETTINGS:
+                    lo, hi = self._ALLOWED_FLOAT_SETTINGS[key]
+                    try:
+                        v = float(value)
+                    except (TypeError, ValueError):
+                        return error_response(f"{key} 必须是数字", status_code=400)
+                    if not lo <= v <= hi:
+                        return error_response(
+                            f"{key} 取值范围 {lo}~{hi}", status_code=400
+                        )
+                    self.config[key] = v
+                    applied[key] = v
+                elif key in self._ALLOWED_BOOL_SETTINGS:
+                    self.config[key] = bool(value)
+                    applied[key] = bool(value)
+                else:
+                    return error_response(f"不支持的配置项: {key}", status_code=400)
+
+            try:
+                await self.config.save_config_async()
+            except Exception:
+                self.config.save_config()
+            logger.info("[proactive_chat] WebUI 已保存配置: %s", applied)
+            return json_response({"saved": True, "applied": applied})
+        except Exception:
+            logger.exception("[proactive_chat] WebUI settings 接口异常")
+            return error_response("保存设置失败", status_code=500)
 
 
 # =====================================================================
