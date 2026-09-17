@@ -4,11 +4,36 @@
 (function () {
   "use strict";
 
-  const bridge = window.AstrBotPluginPage;
   const $ = (id) => document.getElementById(id);
 
+  let bridge = null;
   let overview = null;
   let pollTimer = null;
+
+  // ---------- 桥接等待 ----------
+  // Dashboard 会向页面注入 /api/plugin/page/bridge-sdk.js，但注入时机可能晚于
+  // 本脚本执行，因此轮询等待桥接就绪；超时给出可操作的提示。
+  function waitForBridge(timeoutMs) {
+    return new Promise((resolve, reject) => {
+      const start = Date.now();
+      (function check() {
+        const b = window.AstrBotPluginPage;
+        if (b && typeof b.apiGet === "function" && typeof b.ready === "function") {
+          resolve(b);
+          return;
+        }
+        if (Date.now() - start > timeoutMs) {
+          reject(
+            new Error(
+              "未检测到 Plugin Pages 桥接。请从 AstrBot WebUI 的「插件 → 主动聊天 → 打开页面」进入，并确认 AstrBot 版本支持 Plugin Pages"
+            )
+          );
+          return;
+        }
+        setTimeout(check, 200);
+      })();
+    });
+  }
 
   // ---------- 主题 ----------
   function applyTheme(isDark) {
@@ -269,13 +294,23 @@
 
   // ---------- 初始化 ----------
   async function init() {
+    // 主题：优先桥接上下文，兜底读 Dashboard 附加的 ?theme= 参数
+    const themeParam = new URLSearchParams(location.search).get("theme");
+    if (themeParam) applyTheme(themeParam === "dark");
+
+    try {
+      bridge = await waitForBridge(15000);
+    } catch (e) {
+      toast(e.message, false);
+      return; // 不启动轮询，避免刷屏报错
+    }
+
     try {
       const ctx = await bridge.ready();
       applyTheme(!!ctx.isDark);
       bridge.onContext((c) => applyTheme(!!c.isDark));
     } catch (e) {
-      // 桥接不可用时（如直接浏览器打开调试）使用浅色主题继续
-      applyTheme(false);
+      // 桥接可用但上下文异常时继续用默认主题
     }
     await load();
     pollTimer = setInterval(load, 5000);

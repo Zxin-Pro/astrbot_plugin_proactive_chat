@@ -51,7 +51,7 @@ _KV_SESSIONS = "proactive_chat_sessions"
 _KV_GLOBAL_LAST = "proactive_chat_global_last_ts"
 
 # 版本信息
-_VERSION = "v1.1.0"
+_VERSION = "v1.1.1"
 
 # WebUI 后端 API 使用的插件名前缀
 PLUGIN_NAME = "astrbot_plugin_proactive_chat"
